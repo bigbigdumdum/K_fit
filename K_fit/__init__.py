@@ -11,6 +11,7 @@ fitter    : Kearsley fit (kearsley-numba) and coordinate transformation
 writer    : write moved structures, the text report and the CSV files
 archive   : zip all output files
 pipeline  : run a complete superposition job (used by the Colab notebook)
+errors    : KFitError, the base class of every K_fit error
 
 Every atom is addressed by its ``matomid`` = f"{model_number}-{atom_id}".
 """

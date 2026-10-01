@@ -46,7 +46,7 @@ K_fit/
 | M4 | Writer (PDB text swap + ANISOU rotation, mmCIF via MMCIF2Dict), report, CSVs, zip | done |
 | M5 | Packaging (`pyproject.toml`, MIT) and pipeline | done |
 
-33 tests pass (`pytest`; the 2 GFP tests from CLAUDE.md download 1EMA and 6L26 and skip when offline), with Biopython 1.88, numpy 2.5, numba 0.67 and
+38 tests pass (`pytest`; the 2 tests of the CLAUDE.md test case download their entries and skip when offline), with Biopython 1.88, numpy 2.5, numba 0.67 and
 kearsley-numba 0.1.0 on Python 3.13.
 
 ## Behaviour decided during implementation
@@ -59,13 +59,14 @@ kearsley-numba 0.1.0 on Python 3.13.
   atom name, altloc), because PDB files restart atom serials in every model.
   A model lacking a selected atom is reported as NO FIT.
 - **Without fit all models:** only the selected model is moved; other models
-  are written unchanged.
+  are written unchanged. With fit all models, NO FIT models are left out of
+  the fitted file.
+- **Fitted files** hold coordinates only; header records are removed.
 - **Same file twice:** `Structure.copy()` and `pipeline.self_fit_job()` make a
   copy named like a duplicate input (`<stem>_<n><ext>`).
-- **Warnings** are also given for fewer than 3 pairs (the rotation is not well defined).
+- **Errors** (not warnings) for fewer than 3 pairs and for atoms on one straight line.
 - A pipeline run with selection errors raises `PipelineError` and writes nothing.
 
 ## Open items
 
-1. Test in a real Colab runtime once both repos are on GitHub.
-2. Package name: `K_fit` works, but Python style prefers lowercase `k_fit`.
+1. Package name: `K_fit` works, but Python style prefers lowercase `k_fit`.

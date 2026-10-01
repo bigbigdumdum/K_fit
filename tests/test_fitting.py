@@ -4,16 +4,18 @@
 
 import csv
 import os
+import shutil
 import zipfile
 
 import numpy as np
 import pytest
 from Bio.PDB import PDBParser
+from Bio.PDB.MMCIF2Dict import MMCIF2Dict
 
 from K_fit.fitter import apply_transform, fit_pair
 from K_fit.parser import load_structure
-from K_fit.pipeline import FitJob, PipelineError, run_superposition, self_fit_job
-from K_fit.writer import to_standard_transform, write_structure
+from K_fit.pipeline import FitJob, PipelineError, output_stems, run_superposition, self_fit_job
+from K_fit.writer import PDB_KEPT_RECORDS, to_standard_transform, write_structure
 
 from conftest import data_path
 
@@ -48,16 +50,18 @@ def test_recover_known_move(tmp_path, known_move):
     assert np.abs(back - ref.coords(all_ids)).max() < 3e-3
 
 
-def test_pdb_output_keeps_other_lines(tmp_path, known_move):
+def test_pdb_output_keeps_only_coordinate_records(tmp_path, known_move):
     ref = load_structure(data_path("1UBQ.pdb"))
     out = tmp_path / "out.pdb"
     write_structure(ref, {1: known_move}, str(out))
-    before = ref.raw_text.splitlines()
+    before = [line for line in ref.raw_text.splitlines()
+              if line[:6].ljust(6) in PDB_KEPT_RECORDS]
     after = out.read_text().splitlines()
+    assert "CRYST1" in ref.raw_text and "CRYST1" not in out.read_text()
     assert len(before) == len(after)
     for old, new in zip(before, after):
         if old.startswith(("ATOM  ", "HETATM")):
-            assert old[:30] == new[:30] and old[54:] == new[54:]
+            assert old[:30] == new[:30] and old[54:] == new[54:] and old[30:54] != new[30:54]
         else:
             assert old == new
 
@@ -69,6 +73,19 @@ def test_cif_round_trip(tmp_path, known_move):
     ids = list(ref.atoms)
     expected = apply_transform(ref.coords(ids), *known_move)
     assert np.abs(target.coords(ids) - expected).max() < 1e-3
+    # Only the block name, _entry.id and _atom_site are left.
+    keys = MMCIF2Dict(str(tmp_path / "moved.cif")).keys()
+    assert "_cell.length_a" in MMCIF2Dict(data_path("1UBQ.cif"))
+    assert all(k.startswith(("data_", "_entry.id", "_atom_site.")) for k in keys)
+
+
+def test_cif_written_after_input_file_is_gone(tmp_path, known_move):
+    copy = tmp_path / "in.cif"
+    shutil.copy(data_path("1UBQ.cif"), copy)
+    structure = load_structure(str(copy))
+    os.remove(copy)
+    write_structure(structure, {1: known_move}, str(tmp_path / "out.cif"))
+    assert load_structure(str(tmp_path / "out.cif")).atoms.keys() == structure.atoms.keys()
 
 
 def test_anisou_is_rotated(tmp_path, known_move):
@@ -164,3 +181,35 @@ def test_default_moves_only_selected_model(tmp_path):
     out = load_structure(result.output_structures["t.pdb"])
     model3 = [a.matomid for a in nmr.atoms_in_model(3)]
     assert np.allclose(out.coords(model3), nmr.coords(model3))
+
+
+def test_fit_all_models_leaves_out_failed_models(tmp_path):
+    nmr = load_structure(data_path("1L2Y_3models.pdb"))
+    ids = ca_ids(nmr, 1)
+    job = self_fit_job(nmr, ids, {nmr.name})
+    result = run_superposition(nmr, [job], str(tmp_path), rmsd_cutoff=0.5, so_cutoff=5.0,
+                               fit_all_models=True, make_zip=False)
+    assert [f.passed for f in result.fits] == [True, False, False]
+    out = load_structure(result.output_structures[job.target.name])
+    assert out.models() == [1]
+    assert "NO FIT models 2, 3 left out" in open(result.report_path).read()
+
+
+def test_same_stem_targets_get_separate_files(tmp_path):
+    ref = load_structure(data_path("1UBQ.pdb"))
+    shutil.copy(data_path("1UBQ.pdb"), tmp_path / "x.pdb")
+    shutil.copy(data_path("1UBQ.cif"), tmp_path / "x.cif")
+    a, b = load_structure(str(tmp_path / "x.pdb")), load_structure(str(tmp_path / "x.cif"))
+    ids = ca_ids(ref)
+    result = run_superposition(ref, [FitJob(a, ids, ids), FitJob(b, ids, ca_ids(b))],
+                               str(tmp_path / "out"))
+    assert sorted(os.listdir(tmp_path / "out")) == [
+        "K_fit_results.zip", "report.txt", "transforms.csv", "x_cif__pairs.csv",
+        "x_cif_fit.cif", "x_pdb__pairs.csv", "x_pdb_fit.pdb"]
+    with zipfile.ZipFile(result.zip_path) as archive:
+        assert len(archive.namelist()) == 6
+
+
+def test_output_stems():
+    assert output_stems(["a.pdb", "b.cif"]) == {"a.pdb": "a", "b.cif": "b"}
+    assert output_stems(["x.pdb", "x.cif", "x"]) == {"x.pdb": "x_pdb", "x.cif": "x_cif", "x": "x"}

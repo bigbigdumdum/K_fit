@@ -13,6 +13,8 @@ import re
 import urllib.error
 import urllib.request
 
+from .errors import KFitError
+
 # {pdb_id} is the upper-case 4-character ID, {ext} is "cif" or "pdb".
 DOWNLOAD_URL = "https://files.rcsb.org/download/{pdb_id}.{ext}"
 
@@ -20,7 +22,7 @@ DOWNLOAD_URL = "https://files.rcsb.org/download/{pdb_id}.{ext}"
 PDB_ID_PATTERN = re.compile(r"^[0-9][A-Za-z0-9]{3}$")
 
 
-class FetchError(Exception):
+class FetchError(KFitError):
     """Raised when a PDB entry cannot be downloaded."""
 
 

@@ -23,7 +23,12 @@ reported as NO FIT. To fit the models of a single file onto one of its own
 models, pass a job made by ``self_fit_job``.
 
 Without fit_all_models only the selected model of each target is moved;
-other models are written unchanged.
+other models are written unchanged. With fit_all_models the fitted file holds
+only the models whose fit passed, so every model in it is superimposed.
+
+Output file names start with the target name without its extension. If two
+targets share that stem (e.g. ``x.pdb`` and ``x.cif``), the extension is kept
+in the stem (``x_pdb``, ``x_cif``) so no file overwrites another.
 """
 
 from __future__ import annotations
@@ -33,6 +38,7 @@ from dataclasses import dataclass, field
 
 from .archive import zip_outputs
 from .checker import check_atom_pairs
+from .errors import KFitError
 from .fitter import DEFAULT_RMSD_CUTOFF, DEFAULT_SO_CUTOFF, fit_pair, unfittable_result
 from .parser import Structure, make_unique_name
 from .writer import (output_file_name, write_pairs_csv, write_report, write_structure,
@@ -43,7 +49,7 @@ TRANSFORMS_NAME = "transforms.csv"
 ZIP_NAME = "K_fit_results.zip"
 
 
-class PipelineError(Exception):
+class PipelineError(KFitError):
     """Raised when a job cannot run (e.g. atom selections fail the checks)."""
 
 
@@ -134,9 +140,22 @@ def _fit_job(reference: Structure, job: FitJob, so_cutoff: float, rmsd_cutoff: f
     return fits
 
 
-def _file_stem(name: str) -> str:
-    """Return the name without extension, for output file names."""
-    return os.path.splitext(name)[0]
+def output_stems(names: list) -> dict:
+    """Return {name: output file stem}, with a different stem for every name.
+
+    The stem is the name without its extension. Names sharing a stem keep
+    their extension with "_" instead of "." (``x.pdb`` -> ``x_pdb``). Any
+    remaining clash gets a ``_<n>`` suffix.
+    """
+    plain = [os.path.splitext(name)[0] for name in names]
+    stems, taken = {}, set()
+    for name, stem in zip(names, plain):
+        if plain.count(stem) > 1:
+            stem = name.replace(".", "_")
+        stem = make_unique_name(stem, taken)
+        taken.add(stem)
+        stems[name] = stem
+    return stems
 
 
 def run_superposition(reference: Structure, jobs: list, out_dir: str,
@@ -148,7 +167,7 @@ def run_superposition(reference: Structure, jobs: list, out_dir: str,
     Raises PipelineError (with the check messages) if any selection has
     errors; nothing is written in that case. Outputs in ``out_dir``:
     ``<stem>_fit.<ext>`` per target with at least one passing fit,
-    ``<stem>__pairs.csv`` per target, ``transforms.csv``, ``report.txt``, and
+    ``<stem>__pairs.csv`` per target (stems from ``output_stems``), ``transforms.csv``, ``report.txt``, and
     ``K_fit_results.zip`` (if ``make_zip``).
     """
     if not jobs:
@@ -161,19 +180,24 @@ def run_superposition(reference: Structure, jobs: list, out_dir: str,
     os.makedirs(out_dir, exist_ok=True)
     result = RunResult(reference=reference, targets=[j.target for j in jobs],
                        checks=checks, fits=[])
+    stems = output_stems([job.target.name for job in jobs])
     for job in jobs:
         fits = _fit_job(reference, job, so_cutoff, rmsd_cutoff, fit_all_models)
         result.fits += fits
         target = job.target
+        stem = stems[target.name]
         passed = {f.target_model: (f.rotation, f.translation) for f in fits if f.passed}
         out_path = None
         if passed:
+            # fit_all_models: leave out failed models so the file has one frame.
+            models_to_write = set(passed) if fit_all_models else None
             out_path = write_structure(target, passed,
-                                       os.path.join(out_dir, output_file_name(target)))
+                                       os.path.join(out_dir, output_file_name(target, stem)),
+                                       models_to_write)
         result.output_structures[target.name] = out_path
         result.pairs_files[target.name] = write_pairs_csv(
             reference, target, [f for f in fits if f.target_ids],
-            os.path.join(out_dir, f"{_file_stem(target.name)}__pairs.csv"))
+            os.path.join(out_dir, f"{stem}__pairs.csv"))
 
     result.transforms_path = write_transforms_csv(
         result.fits, os.path.join(out_dir, TRANSFORMS_NAME))

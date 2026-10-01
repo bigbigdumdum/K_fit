@@ -57,14 +57,20 @@ choose atoms from the file you actually load.
 
 | File | Content |
 |---|---|
-| `<name>_fit.pdb` / `.cif` | Fitted structure in the input format; only coordinates change (not written if no fit passed) |
+| `<name>_fit.pdb` / `.cif` | Fitted structure in the input format, coordinates only: header records (cell, symmetry, assemblies, ...) are removed because they no longer match. Not written if no fit passed; with `fit_all_models`, NO FIT models are left out |
 | `report.txt` | Inputs with SHA-256 checksums, cutoffs, and for each fit the atom count, RMSD, structure overlap, FIT / NO FIT and the transformation |
 | `<name>__pairs.csv` | The exact atom pairs used |
+
+`<name>` is the target name without its extension. If two targets share it
+(e.g. `x.pdb` and `x.cif`), the extension is kept: `x_pdb`, `x_cif`.
 | `transforms.csv` | Rotation R and translation t for each fit |
 | `K_fit_results.zip` | All of the above |
 
 Transformations are given as `x' = R·x + t`, so they can be used directly in
 PyMOL or ChimeraX.
+
+At least 3 atom pairs, not all on one straight line, are required.
+All K_fit errors derive from `K_fit.errors.KFitError`.
 
 ## Known limitations
 

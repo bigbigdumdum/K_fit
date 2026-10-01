@@ -31,9 +31,8 @@ pytest -q
 
 Test data in `tests/data` are excerpts of RCSB entries: 1UBQ (PDB and mmCIF),
 the first 3 NMR models of 1L2Y, and residues 1–8 of 1EJG (altlocs and
-ANISOU). `tests/test_gfp.py` is the CLAUDE.md test case (6L26 fitted onto
-1EMA by the 15 chromophore carbons, RMSD 0.124 Å); it downloads both entries
-and is skipped when offline.
+ANISOU). `tests/test_gfp.py` is the test case defined in CLAUDE.md; it
+downloads its entries and is skipped when offline.
 
 ## Behaviour details
 
@@ -45,14 +44,24 @@ and is skipped when offline.
   number, insertion code, residue name, atom name, altloc), because PDB files
   restart atom serials in every model. A model missing a selected atom is NO FIT.
 - **Without fit all models,** only the selected model is moved; other models
-  are written unchanged.
+  are written unchanged. **With fit all models,** the fitted file holds only
+  the models whose fit passed; NO FIT models are left out and listed in the report.
 - **Pass criteria:** `RMSD <= rmsd_cutoff` and SO == 100 %. SO comes from
-  kearsley-numba and counts distances strictly below `so_cutoff`.
+  kearsley-numba and counts distances strictly below `so_cutoff`. With
+  RMSDc >= SOdc the RMSD test can never fail on its own (every distance is
+  below SOdc, so the RMSD is too); it decides only when RMSDc is set lower.
+  Both are kept because RMSDc is the standard cutoff in the field.
 - **NO FIT:** no structure file is written unless at least one fit of that
   target passed; the report, pairs CSV and transforms row are always written.
 - **Checks:** errors for empty selections, count mismatch, unknown or
-  duplicate matomids, and mixed models; warnings for atom name or element
-  mismatches and fewer than 3 pairs.
+  duplicate matomids, mixed models, fewer than 3 pairs, and atoms on one
+  straight line (`checker.COLLINEAR_TOLERANCE`); warnings for atom name or
+  element mismatches.
+- **Errors:** every K_fit error class derives from `errors.KFitError`, so a
+  caller can report all user mistakes with one `except`.
+- **Output names:** `<stem>_fit<ext>` and `<stem>__pairs.csv`, where stem is
+  the target name without its extension. Targets sharing a stem keep the
+  extension in it (`x_pdb`, `x_cif`; `pipeline.output_stems`).
 
 ## Transformation convention
 
@@ -64,9 +73,17 @@ converts them to the standard form for the output files
 
 ## Writing structure files
 
-- **PDB:** the input text is copied; only columns 31–54 (x, y, z) of moved
-  `ATOM`/`HETATM` records are replaced, and `ANISOU` tensors are rotated
-  (R U Rᵀ). All other lines are byte-identical.
-- **mmCIF:** `_atom_site.Cartn_x/y/z` (and `_atom_site_anisotrop` U or B
-  tensors) are replaced through Biopython's `MMCIF2Dict` and written with
-  `MMCIFIO`. All categories are kept, but spacing and quoting may change.
+Fitted files hold coordinates only. Header records (cell, symmetry,
+assemblies, secondary structure, links, ...) are removed, because they no
+longer match the moved coordinates. Both writers read the input text kept in
+`Structure.raw_text`, so the input file may be deleted after loading.
+
+- **PDB:** only `MODEL`, `ATOM`, `HETATM`, `ANISOU`, `TER`, `ENDMDL` and `END`
+  lines are kept (`writer.PDB_KEPT_RECORDS`). Columns 31–54 (x, y, z) of moved
+  `ATOM`/`HETATM` records are replaced and `ANISOU` tensors rotated (R U Rᵀ);
+  all other columns are unchanged.
+- **mmCIF:** only the block name, `_entry.id`, `_atom_site` and
+  `_atom_site_anisotrop` are kept (`writer.CIF_KEPT_PREFIXES`).
+  `_atom_site.Cartn_x/y/z` (and U or B tensors) are replaced through
+  Biopython's `MMCIF2Dict` and written with `MMCIFIO`; spacing and quoting
+  may change.

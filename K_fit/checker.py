@@ -10,10 +10,12 @@ Errors (fitting must not run):
   * a matomid does not exist in its structure
   * the same matomid appears twice in one selection
   * one selection mixes atoms from more than one model
+  * fewer than 3 pairs (the rotation is then not defined)
+  * the atoms of a selection lie on one straight line (the rotation about
+    that line is then not defined)
 
 Warnings (fitting may run):
   * a pair has different atom names or different elements
-  * fewer than 3 pairs (the rotation is then not uniquely defined)
 
 To add a rule, append to ``errors`` or ``warnings`` in ``check_atom_pairs``.
 """
@@ -24,10 +26,18 @@ import csv
 import io
 from dataclasses import dataclass, field
 
+import numpy as np
+
+from .errors import KFitError
 from .parser import AtomRecord, Structure
 
 # Minimum number of pairs for a well-defined rotation.
 MIN_PAIRS_FOR_ROTATION = 3
+
+# A selection counts as collinear when the RMS distance of its atoms from
+# their best-fit straight line is below this value (Angstrom). Raise it to
+# also reject nearly collinear selections.
+COLLINEAR_TOLERANCE = 0.05
 
 
 @dataclass
@@ -98,6 +108,20 @@ def _check_one_selection(structure: Structure, ids: list, role: str) -> list:
     return errors
 
 
+def distance_from_line(coords: np.ndarray) -> float:
+    """Return the RMS distance (A) of (N, 3) points from their best-fit line.
+
+    The centred coordinates are decomposed by SVD: the first singular
+    value belongs to the best-fit line, the other two measure the spread
+    away from it. Returns 0.0 for fewer than 3 points.
+    """
+    if len(coords) < 3:
+        return 0.0
+    centred = coords - coords.mean(axis=0)
+    singular_values = np.linalg.svd(centred, compute_uv=False)
+    return float(np.sqrt((singular_values[1:] ** 2).sum() / len(coords)))
+
+
 def check_atom_pairs(reference: Structure, target: Structure,
                      reference_ids: list, target_ids: list) -> PairCheckResult:
     """Validate two ordered matomid lists and pair them up by position.
@@ -114,6 +138,21 @@ def check_atom_pairs(reference: Structure, target: Structure,
             f"target {target.name} has {len(target_ids)}")
     if result.errors:
         return result
+    if len(reference_ids) < MIN_PAIRS_FOR_ROTATION:
+        result.errors.append(
+            f"only {len(reference_ids)} pair(s); at least {MIN_PAIRS_FOR_ROTATION} "
+            "atoms not on one straight line are needed to define a rotation")
+        return result
+    for structure, ids, role in ((reference, reference_ids, "reference"),
+                                 (target, target_ids, "target")):
+        spread = distance_from_line(structure.coords(ids))
+        if spread < COLLINEAR_TOLERANCE:
+            result.errors.append(
+                f"{role} {structure.name}: the selected atoms lie on one straight line "
+                f"(RMS distance from the line {spread:.3f} A < {COLLINEAR_TOLERANCE} A); "
+                "add an atom off that line")
+    if result.errors:
+        return result
 
     for ref_id, tgt_id in zip(reference_ids, target_ids):
         pair = AtomPair(reference.atoms[ref_id], target.atoms[tgt_id])
@@ -125,14 +164,10 @@ def check_atom_pairs(reference: Structure, target: Structure,
         elif pair.reference.atom_name != pair.target.atom_name:
             result.warnings.append(
                 f"atom name differs: {pair.reference.label()} vs {pair.target.label()}")
-    if len(result.pairs) < MIN_PAIRS_FOR_ROTATION:
-        result.warnings.append(
-            f"only {len(result.pairs)} pair(s); at least {MIN_PAIRS_FOR_ROTATION} "
-            "non-collinear atoms are needed for a well-defined rotation")
     return result
 
 
-class PairsCsvError(Exception):
+class PairsCsvError(KFitError):
     """Raised when a pairs CSV file is malformed."""
 
 

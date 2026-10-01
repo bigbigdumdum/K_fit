@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: MIT
 """Tests for K_fit.checker."""
 
+import numpy as np
 import pytest
 
-from K_fit.checker import PairsCsvError, check_atom_pairs, parse_matomid_list, read_pairs_csv
+from K_fit.checker import (PairsCsvError, check_atom_pairs, distance_from_line,
+                            parse_matomid_list, read_pairs_csv)
+from K_fit.errors import KFitError
 from K_fit.parser import load_structure
 
 from conftest import data_path
@@ -59,10 +62,21 @@ def test_element_and_name_warnings(ubq):
     assert any("atom name differs" in w for w in check_atom_pairs(ubq, ubq, ca, cb).warnings)
 
 
-def test_too_few_pairs_warning(ubq):
+def test_too_few_pairs_is_error(ubq):
     ids = ca_ids(ubq, n=2)
     result = check_atom_pairs(ubq, ubq, ids, ids)
-    assert result.ok and any("well-defined rotation" in w for w in result.warnings)
+    assert not result.ok and "only 2 pair(s)" in result.errors[0]
+
+
+def test_collinear_selection_is_error(ubq):
+    ids = ca_ids(ubq, n=4)
+    line = ubq.copy("line.pdb")
+    for i, m in enumerate(ids):                  # put the 4 atoms on one line
+        line.atoms[m].coord = np.array([1.5 * i, 2.0 * i, -1.0 * i])
+    result = check_atom_pairs(ubq, line, ids, ids)
+    assert not result.ok and "one straight line" in result.errors[0]
+    assert "target line.pdb" in result.errors[0]
+    assert distance_from_line(ubq.coords(ids)) > 0.5    # a real beta strand passes
 
 
 def test_parse_matomid_list():
@@ -84,5 +98,6 @@ def test_read_pairs_csv():
     "ref.pdb,a.pdb\n",                       # no rows
 ])
 def test_read_pairs_csv_errors(text):
+    assert issubclass(PairsCsvError, KFitError)
     with pytest.raises(PairsCsvError):
         read_pairs_csv(text, ["ref.pdb", "a.pdb"])

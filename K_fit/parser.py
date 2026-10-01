@@ -30,6 +30,8 @@ import numpy as np
 from Bio.PDB import MMCIFParser, PDBParser
 from Bio.PDB.PDBExceptions import PDBConstructionException
 
+from .errors import KFitError
+
 # File extension (lower case) -> K_fit format name.
 FORMAT_BY_EXTENSION = {
     ".pdb": "pdb",
@@ -42,7 +44,7 @@ FORMAT_BY_EXTENSION = {
 WATER_NAMES = {"HOH", "WAT", "H2O", "DOD", "D2O"}
 
 
-class StructureError(Exception):
+class StructureError(KFitError):
     """Raised when a structure file cannot be read or is inconsistent."""
 
 
