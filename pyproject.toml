@@ -1,0 +1,28 @@
+# Copyright (C) 2026 Mukundan S
+# SPDX-License-Identifier: MIT
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "K_fit"
+version = "0.1.0"
+description = "Superimpose PDB/mmCIF protein structures by Kearsley fitting of selected atoms"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Mukundan S" }]
+requires-python = ">=3.10"
+dependencies = [
+    "biopython>=1.80",
+    "numpy>=1.24",
+    "kearsley-numba==0.1.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["K_fit*"]
