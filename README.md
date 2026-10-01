@@ -64,7 +64,7 @@ choose atoms from the file you actually load.
 `<name>` is the target name without its extension. If two targets share it
 (e.g. `x.pdb` and `x.cif`), the extension is kept: `x_pdb`, `x_cif`.
 | `transforms.csv` | Rotation R and translation t for each fit |
-| `K_fit_results.zip` | All of the above |
+| `<reference>_vs_<n>structures.zip` | All of the above; `<n>` is the number of fitted structures, e.g. `1UBQ_vs_3structures.zip` |
 
 Transformations are given as `x' = R·x + t`, so they can be used directly in
 PyMOL or ChimeraX.

@@ -112,7 +112,7 @@ def test_pipeline_fit_writes_all_outputs(tmp_path, known_move):
     ids = ca_ids(ref)
     result = run_superposition(ref, [FitJob(target, ids, ids)], str(tmp_path / "out"))
     names = sorted(os.listdir(tmp_path / "out"))
-    assert names == ["1UBQ_1__pairs.csv", "1UBQ_1_fit.pdb", "K_fit_results.zip",
+    assert names == ["1UBQ_1__pairs.csv", "1UBQ_1_fit.pdb", "1UBQ_vs_1structure.zip",
                      "report.txt", "transforms.csv"]
     report = open(result.report_path).read()
     assert "SHA-256" in report and ref.sha256 in report and ": FIT" in report
@@ -121,7 +121,7 @@ def test_pipeline_fit_writes_all_outputs(tmp_path, known_move):
         row = next(csv.DictReader(handle))
     assert row["status"] == "FIT" and row["n_atoms"] == "76"
     with zipfile.ZipFile(result.zip_path) as archive:
-        assert sorted(archive.namelist()) == [n for n in names if n != "K_fit_results.zip"]
+        assert sorted(archive.namelist()) == [n for n in names if not n.endswith(".zip")]
     fitted = load_structure(result.output_structures["1UBQ_1.pdb"])
     assert np.abs(fitted.coords(list(ref.atoms)) - ref.coords(list(ref.atoms))).max() < 3e-3
 
@@ -204,7 +204,7 @@ def test_same_stem_targets_get_separate_files(tmp_path):
     result = run_superposition(ref, [FitJob(a, ids, ids), FitJob(b, ids, ca_ids(b))],
                                str(tmp_path / "out"))
     assert sorted(os.listdir(tmp_path / "out")) == [
-        "K_fit_results.zip", "report.txt", "transforms.csv", "x_cif__pairs.csv",
+        "1UBQ_vs_2structures.zip", "report.txt", "transforms.csv", "x_cif__pairs.csv",
         "x_cif_fit.cif", "x_pdb__pairs.csv", "x_pdb_fit.pdb"]
     with zipfile.ZipFile(result.zip_path) as archive:
         assert len(archive.namelist()) == 6

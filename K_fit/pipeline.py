@@ -46,7 +46,6 @@ from .writer import (output_file_name, write_pairs_csv, write_report, write_stru
 
 REPORT_NAME = "report.txt"
 TRANSFORMS_NAME = "transforms.csv"
-ZIP_NAME = "K_fit_results.zip"
 
 
 class PipelineError(KFitError):
@@ -158,6 +157,17 @@ def output_stems(names: list) -> dict:
     return stems
 
 
+def zip_file_name(reference: Structure, n_targets: int) -> str:
+    """Return the zip name ``<reference stem>_vs_<n>structures.zip``.
+
+    ``n_targets`` is the number of structures fitted onto the reference,
+    e.g. "1UBQ_vs_3structures.zip"; one target gives "1UBQ_vs_1structure.zip".
+    """
+    stem = os.path.splitext(reference.name)[0]
+    noun = "structure" if n_targets == 1 else "structures"
+    return f"{stem}_vs_{n_targets}{noun}.zip"
+
+
 def run_superposition(reference: Structure, jobs: list, out_dir: str,
                       so_cutoff: float = DEFAULT_SO_CUTOFF,
                       rmsd_cutoff: float = DEFAULT_RMSD_CUTOFF,
@@ -168,7 +178,7 @@ def run_superposition(reference: Structure, jobs: list, out_dir: str,
     errors; nothing is written in that case. Outputs in ``out_dir``:
     ``<stem>_fit.<ext>`` per target with at least one passing fit,
     ``<stem>__pairs.csv`` per target (stems from ``output_stems``), ``transforms.csv``, ``report.txt``, and
-    ``K_fit_results.zip`` (if ``make_zip``).
+    ``<reference>_vs_<n>structures.zip`` (if ``make_zip``; see ``zip_file_name``).
     """
     if not jobs:
         raise PipelineError("at least one target (a second set of atoms) is required")
@@ -205,5 +215,6 @@ def run_superposition(reference: Structure, jobs: list, out_dir: str,
         reference, result.targets, result.fits, checks, so_cutoff, rmsd_cutoff,
         fit_all_models, result.output_structures, os.path.join(out_dir, REPORT_NAME))
     if make_zip:
-        result.zip_path = zip_outputs(result.all_files(), os.path.join(out_dir, ZIP_NAME))
+        result.zip_path = zip_outputs(
+            result.all_files(), os.path.join(out_dir, zip_file_name(reference, len(jobs))))
     return result
